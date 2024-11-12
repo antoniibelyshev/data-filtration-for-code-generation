@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "data-filtration-for-code-generation"
+version = "0.1.0"
+description = ""
+authors = ["Nikita Abramov <n8ron2206@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+datasets = "^3.1.0"
+transformers = "^4.46.2"
+matplotlib = "^3.9.2"
+numpy = "^2.1.3"
+jupyterlab = "^4.3.0"
+scipy = "^1.14.1"
+ipywidgets = "^8.1.5"
+torch = "^2.5.1"
+openai = "^1.54.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
