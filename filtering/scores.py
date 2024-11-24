@@ -5,35 +5,65 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 import openai
 from torch.nn.functional import cross_entropy
+from datasets import Dataset
+from typing import Callable, Any
 
 
 client = openai.OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
 )
 
-def compute_perplexity(
-    samples: dict[str, list[str]],
-    model: AutoModelForCausalLM,
-    tokenizer: AutoTokenizer,
-) -> dict[str, torch.Tensor]:
-    input_texts = [problem + " " + solution for problem, solution in zip(samples["problem"], samples["solution"])]
-    
-    inputs = tokenizer(input_texts, return_tensors="pt", padding=True, truncation=True).to(model.device)
-    
-    with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs.logits
 
-    logits = logits[:, :-1, :]
-    labels = inputs["input_ids"][:, 1:]
+def get_data_collator(tokenizer: AutoTokenizer) -> Callable[[list[dict[str, Any]]], dict[str, Any]]:
+    def data_collator(features):
+        inputs = [f"{example['problem']} {tokenizer.sep_token} {example['solution']}" for example in features]
+
+        batch = tokenizer(
+            inputs,
+            max_length=512,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt"
+        )
+
+        labels = batch["input_ids"].clone()
+
+        for i, example in enumerate(features):
+            problem = f"{example['problem']} {tokenizer.sep_token}"
+            problem_length = len(tokenizer(problem, add_special_tokens=False)["input_ids"])
+
+            labels[i, :problem_length] = -100
+
+        batch["labels"] = labels
+        return batch
+
+    return data_collator
+
+
+def compute_perplexity(
+    samples,
+    model,
+    tokenizer,
+    *,
+    max_length: int | None = None,
+) -> dict[str, torch.Tensor]:
+    batch = get_data_collator(tokenizer)(Dataset.from_dict(samples))
+
+    for key, val in batch.items():
+        batch[key] = val.to(model.device)
+
+    with torch.no_grad():
+        outputs = model(**batch)
+        logits = outputs.logits
 
     perplexity = cross_entropy(
         logits.reshape(-1, logits.size(-1)),
-        labels.reshape(-1),
+        batch["labels"].reshape(-1),
         reduction='none',
     ).reshape(logits.size(0), -1).mean(dim=1).exp()
     
     return {"perplexity": perplexity}
+
 
 def compute_ice_score(samples: dict[str, list[str]], aspect: str = "correctness", model = "gpt-4o-mini") -> dict[str, torch.Tensor]:
     ice_scores = []
@@ -114,40 +144,3 @@ def process_raw_content(content: str, aspect: str) -> int:
 
     # Return the single numeric answer
     return int(ans[0])
-
-def compute_solution_perplexity(
-    samples: dict[str, list[str]],
-    model: AutoModelForCausalLM,
-    tokenizer: AutoTokenizer,
-    *,
-    max_length: int | None = None,
-) -> dict[str, torch.Tensor]:
-    problems = samples["problem"]
-    solutions = samples["solution"]
-
-    if max_length is None:
-        max_length = model.config.n_positions if hasattr(model.config, "n_positions") else 512
-
-    problem_tokens = tokenizer(problems, return_tensors="pt", padding=True, truncation=True, max_length=max_length // 2).to(model.device)
-    solution_tokens = tokenizer(solutions, return_tensors="pt", padding=True, truncation=True, max_length=max_length // 2).to(model.device)
-    
-    input_ids = torch.cat([problem_tokens["input_ids"], solution_tokens["input_ids"]], dim=-1)
-    
-    labels = input_ids.clone()
-    problem_length = problem_tokens["input_ids"].size(1)
-    labels[:, :problem_length] = -100
-
-    with torch.no_grad():
-        outputs = model(input_ids=input_ids)
-        logits = outputs.logits
-    
-    logits = logits[:, problem_length:]
-    labels = input_ids[:, problem_length:]
-
-    perplexity = cross_entropy(
-        logits.reshape(-1, logits.size(-1)),
-        labels.reshape(-1),
-        reduction='none',
-    ).reshape(logits.size(0), -1).mean(dim=1).exp()
-    
-    return {"solution_perplexity": perplexity}

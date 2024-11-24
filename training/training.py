@@ -7,6 +7,7 @@ from transformers import (
 )
 from datasets import DatasetDict
 from typing import Any, Callable
+import wandb
 
 
 def get_data_collator(tokenizer: AutoTokenizer) -> Callable[[list[dict[str, Any]]], dict[str, Any]]:
@@ -46,7 +47,7 @@ DEFAULT_TRAINING_ARGS = {
     "save_total_limit": 2,
     "logging_dir": "./logs",
     "logging_steps": 1,
-    "logging_strategy": "epoch",
+    "logging_strategy": "steps",
     "evaluation_strategy": "epoch",
     "eval_steps": 1,
     "report_to": "wandb",
@@ -60,11 +61,14 @@ def finetune(
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     dataset: DatasetDict,
+    project_name: str = "dataset_filtration",
     **training_args: Any,
-):
-    training_args = TrainingArguments(
-        **{**DEFAULT_TRAINING_ARGS, **training_args}
-    )
+) -> AutoModelForCausalLM:
+    wandb.init(project=project_name)
+
+    combined_training_args = {**DEFAULT_TRAINING_ARGS, **training_args}
+    wandb.config.update(combined_training_args)
+    training_args = TrainingArguments(**combined_training_args)
 
     trainer = Trainer(
         model=model,
@@ -77,6 +81,6 @@ def finetune(
 
     trainer.train()
 
-    eval_loss = trainer.evaluate()["eval_loss"]
+    wandb.finish()
 
-    return model, eval_loss
+    return model
