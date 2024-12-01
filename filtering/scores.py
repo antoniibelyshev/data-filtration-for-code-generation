@@ -36,15 +36,25 @@ def compute_perplexity(
     return {"perplexity": perplexity}
 
 def compute_ice_score(samples: dict[str, list[str]], aspect: str = "correctness", model = "gpt-4o-mini") -> dict[str, torch.Tensor]:
+    with open(f"./filtering/prompts_template/system_prompt_ice_score_{aspect}.txt", "r") as f:
+        prompt = f.read()
     ice_scores = []
     for problem, solution in zip(samples["problem"], samples["solution"]):
-        ice_score = compute_ice_score_sample(problem, solution, aspect, model)
+        ice_score = compute_ice_score_sample(
+            problem=problem,
+            output=solution,
+            prompt=prompt,
+            aspect=aspect,
+            model=model
+        )
         ice_scores.append(ice_score)
     return {"ice_score": torch.tensor(ice_scores)}
 
-def compute_ice_score_sample(problem: str, output: str, aspect: str = "correctness", model: str = "gpt-4o-mini") -> int:
-    with open(f"./filtering/prompts_template/system_prompt_ice_score_{aspect}.txt", "r") as f:
-        prompt = f.read()
+def compute_ice_score_sample(problem: str,
+                             output: str,
+                             prompt: str,
+                             aspect: str = "correctness",
+                             model: str = "gpt-4o-mini") -> int:
     prompt = prompt.replace("{{PROBLEM}}", problem).replace("{{OUTPUT}}", output)
     response = client.chat.completions.create(
         model=model,
@@ -53,7 +63,6 @@ def compute_ice_score_sample(problem: str, output: str, aspect: str = "correctne
     )
     raw_content = response.choices[0].message.content
     ice_score = get_gpt_answer(raw_content=raw_content, aspect=aspect)
-
     return ice_score
 
 # parsing function from ICE-score paper
