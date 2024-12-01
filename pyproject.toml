@@ -16,6 +16,8 @@ scipy = "^1.14.1"
 ipywidgets = "^8.1.5"
 torch = "^2.5.1"
 openai = "^1.54.1"
+evaluate = "^0.4.3"
+sacrebleu = "^2.4.3"
 
 
 [build-system]
