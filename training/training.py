@@ -76,8 +76,10 @@ def finetune(
         train_dataset=dataset["train"],
         eval_dataset=dataset.get("test"),
         data_collator=get_data_collator(tokenizer),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=1)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
     )
+
+    trainer.evaluate()
 
     trainer.train()
 
